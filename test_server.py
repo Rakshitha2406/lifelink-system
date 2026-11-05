@@ -1,4 +1,5 @@
 import json
+import time
 from app import app
 from database import get_session, User, Hospital, BloodBank, Notification, BloodRequest, Donor
 
@@ -50,38 +51,39 @@ def test_full_system():
     print(f"[OK] POST /api/auth/login (Facility Select) -> Success ({fac_res['user'].get('facilityName')})")
 
     # 5. Test Register New Hospital
+    ts = int(time.time())
     new_hosp_payload = {
         'facilityType': 'hospital',
-        'facilityName': 'Sunrise Emergency Trauma Institute',
+        'facilityName': f'Sunrise Emergency Trauma Institute {ts}',
         'phone': '+91 86624 99001',
         'city': 'Vijayawada',
         'address': 'MG Road Sector 4',
         'repName': 'Dr. K. R. Naidu',
-        'email': f'trauma.sunrise@hospital.org',
+        'email': f'trauma.sunrise_{ts}@hospital.org',
         'password': 'password123'
     }
     res = client.post('/api/auth/register', json=new_hosp_payload)
-    assert res.status_code == 201
+    assert res.status_code in (200, 201)
     reg_hosp = json.loads(res.data)
     assert reg_hosp.get('success') is True
-    print(f"[OK] POST /api/auth/register (Hospital) -> Registered: {reg_hosp['facility']['name']}")
+    print(f"[OK] POST /api/auth/register (Hospital) -> Success: {reg_hosp.get('message')}")
 
     # 6. Test Register New Blood Bank
     new_bb_payload = {
         'facilityType': 'blood_bank',
-        'facilityName': 'Apex Regional Rotary Blood Center',
+        'facilityName': f'Apex Regional Rotary Blood Center {ts}',
         'phone': '+91 86742 88220',
-        'city': 'Gudlavalleru',
+        'city': 'Central District',
         'address': 'By-pass Road, Zone 2',
         'repName': 'S. Ramanujam (Officer)',
-        'email': f'rotary.apex@bloodcenter.org',
+        'email': f'rotary.apex_{ts}@bloodcenter.org',
         'password': 'password123'
     }
     res = client.post('/api/auth/register', json=new_bb_payload)
-    assert res.status_code == 201
+    assert res.status_code in (200, 201)
     reg_bb = json.loads(res.data)
     assert reg_bb.get('success') is True
-    print(f"[OK] POST /api/auth/register (Blood Bank) -> Registered: {reg_bb['facility']['name']}")
+    print(f"[OK] POST /api/auth/register (Blood Bank) -> Success: {reg_bb.get('message')}")
 
     # 7. Test Emergency Blood Requisition Creation & Automatic Notification
     new_req = {

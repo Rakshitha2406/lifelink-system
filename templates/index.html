@@ -52,13 +52,8 @@
         <li><a class="nav-link" data-tab-target="about">About</a></li>
       </ul>
 
-      <!-- Header Actions: Role Switcher, Notifications, DB Badge & Auth -->
+      <!-- Header Actions: Role Switcher, Notifications, Auth -->
       <div class="header-actions">
-        <!-- DB Engine Status Badge -->
-        <span class="badge bg-light text-dark border d-none d-lg-inline-block small" id="dbStatusBadge" title="Backend Database Status">
-          💾 DB: Connecting...
-        </span>
-
         <!-- Role Simulator Badge -->
         <div class="role-badge-box">
           <select id="activeRoleSelector" class="role-select-compact" title="Switch User Role in System">
@@ -85,16 +80,16 @@
 
         <!-- Auth Section (Dynamic Login vs Logged In Profile) -->
         <div id="authButtonsContainer" class="d-flex align-items-center gap-2">
-          <button class="btn btn-outline-primary btn-sm" onclick="AppUI.openAuthModal('login')" title="Sign in as Hospital or Blood Bank">
+          <button class="btn btn-outline-primary btn-sm" id="navLoginBtn" onclick="AppUI.openAuthModal('login')" title="Sign in as Hospital or Blood Bank">
             Login
           </button>
-          <button class="btn btn-primary btn-sm" onclick="AppUI.openAuthModal('register')" title="Register New Healthcare Facility">
+          <button class="btn btn-primary btn-sm" id="navRegisterBtn" onclick="AppUI.openAuthModal('register')" title="Register New Healthcare Facility">
             Register
           </button>
         </div>
         <div id="userProfileContainer" class="d-none align-items-center gap-2">
           <span class="badge bg-light text-dark border px-2 py-1" id="userDisplayName">👤 User</span>
-          <button class="btn btn-outline-danger btn-sm" onclick="AppUI.logout()" title="Sign out of your account">
+          <button class="btn btn-outline-danger btn-sm" id="navSignOutBtn" onclick="AppUI.logout()" title="Sign out of your account">
             Sign Out
           </button>
         </div>
@@ -120,7 +115,7 @@
           <span class="badge badge-hospital">🏥 Acting as: Metro Emergency & Trauma Care</span>
         </div>
         <div class="small text-muted" id="serverInfoBanner">
-          ⚡ LifeLink Transfusion Network • Python Flask & MySQL Backend
+          ⚡ 24/7 Centralized Emergency Blood Availability & Dispatch Network
         </div>
       </div>
 
@@ -530,7 +525,7 @@
             <div class="row g-3">
               <div class="col-md-4">
                 <label class="form-label small" for="dirSearchInput">Search Facility or City</label>
-                <input type="text" id="dirSearchInput" class="form-control form-control-sm" placeholder="e.g. Gudlavalleru, Vijayawada, Red Cross...">
+                <input type="text" id="dirSearchInput" class="form-control form-control-sm" placeholder="e.g. Central District, Metro City, Red Cross...">
               </div>
               <div class="col-md-3">
                 <label class="form-label small" for="dirGroupFilter">Filter by Blood Group</label>
@@ -592,7 +587,7 @@
             <div class="row g-3">
               <div class="col-md-5">
                 <label class="form-label small" for="donorSearchInput">Search Donor Name or City</label>
-                <input type="text" id="donorSearchInput" class="form-control form-control-sm" placeholder="e.g. Rajesh, Gudlavalleru, Vijayawada...">
+                <input type="text" id="donorSearchInput" class="form-control form-control-sm" placeholder="e.g. Rajesh, Central District, Metro City...">
               </div>
               <div class="col-md-4">
                 <label class="form-label small" for="donorGroupFilter">Filter by Blood Group</label>
@@ -690,7 +685,7 @@
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
               <div>
                 <h4 class="h5 mb-1" id="sourcePortalName">Central Life Community Blood Bank</h4>
-                <p class="small text-muted mb-0" id="sourcePortalType">Community Blood Center • Main Road, Gudlavalleru</p>
+                <p class="small text-muted mb-0" id="sourcePortalType">Community Blood Center • Main Road, Central Sector</p>
               </div>
               <div class="text-end">
                 <span class="badge badge-verified mb-1">✓ Authorized Facility</span>
@@ -769,7 +764,7 @@
                 </div>
                 <h5 class="h6 mb-2">Nearby Source Has Sufficient Stock</h5>
                 <p class="small text-muted mb-3">
-                  <strong>Input:</strong> Hospital at Gudlavalleru requires 2 units O+ PRBC.<br>
+                  <strong>Input:</strong> Hospital at Central Sector requires 2 units O+ PRBC.<br>
                   <strong>Expected Result:</strong> Central Life Community Blood Bank (0.5 km) is ranked #1 with high compatibility and score > 90.
                 </p>
               </div>
@@ -984,7 +979,7 @@
           <div class="row">
             <div class="col-md-6 form-group">
               <label class="form-label" for="donorCity">City / District *</label>
-              <input type="text" id="donorCity" class="form-control" required placeholder="e.g. Gudlavalleru, Vijayawada">
+              <input type="text" id="donorCity" class="form-control" required placeholder="e.g. Central District, Metro City">
             </div>
             <div class="col-md-6 form-group">
               <label class="form-label" for="donorLastDonated">Last Donated Date</label>
@@ -1084,7 +1079,7 @@
               </div>
               <div class="col-md-6 form-group">
                 <label class="form-label" for="regCity">City / District *</label>
-                <input type="text" id="regCity" class="form-control" required placeholder="e.g. Gudlavalleru, Vijayawada">
+                <input type="text" id="regCity" class="form-control" required placeholder="e.g. Central District, Metro City">
               </div>
             </div>
             <div class="form-group">
@@ -1177,10 +1172,10 @@
         </div>
 
         <div class="footer-col">
-          <h5>Backend & Database</h5>
-          <p class="small text-muted mb-1"><strong>Backend:</strong> Python 3 / Flask REST API</p>
-          <p class="small text-muted mb-1"><strong>Database:</strong> MySQL Database (with PyMySQL & SQLAlchemy)</p>
-          <p class="small text-muted mb-0"><strong>Algorithm:</strong> Haversine Distance & Multi-Source Pooling</p>
+          <h5>Emergency Support</h5>
+          <p class="small text-muted mb-1"><strong>24/7 Helpline:</strong> Emergency Dispatch 108 / 104</p>
+          <p class="small text-muted mb-1"><strong>Regional Coverage:</strong> Hospitals & Certified Blood Banks</p>
+          <p class="small text-muted mb-0"><strong>Verification:</strong> Certified Clinical Compatibility Matching</p>
         </div>
       </div>
 

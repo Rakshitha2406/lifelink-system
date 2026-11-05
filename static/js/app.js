@@ -138,6 +138,7 @@ const AppUI = {
     this.bindDonorForm();
     this.bindSourceStockUpdater();
     this.bindScenarios();
+    this.startNotificationPoller();
     this.renderAll();
 
     const hash = window.location.hash.replace('#', '');
@@ -163,21 +164,11 @@ const AppUI = {
 
   updateDbStatusBadge() {
     const badge = document.getElementById('dbStatusBadge');
-    if (!badge) return;
-    const dbType = AppState.dbStatus.database || 'Database';
-    if (dbType.toLowerCase().includes('mysql')) {
-      badge.className = 'badge bg-success text-white border d-none d-lg-inline-block small';
-      badge.innerHTML = `💾 DB: MySQL (Live)`;
-      badge.title = `Connected to MySQL database on ${AppState.dbStatus.databaseHost || 'localhost'}`;
-    } else {
-      badge.className = 'badge bg-info text-white border d-none d-lg-inline-block small';
-      badge.innerHTML = `💾 DB: SQLite (Active)`;
-      badge.title = `Using local SQLite file. Start MySQL to switch automatically.`;
-    }
+    if (badge) badge.style.display = 'none';
 
     const banner = document.getElementById('serverInfoBanner');
     if (banner) {
-      banner.innerHTML = `⚡ LifeLink Transfusion Network • Backend: Python Flask & ${dbType}`;
+      banner.innerHTML = `⚡ 24/7 Centralized Emergency Blood Availability & Dispatch Network`;
     }
   },
 
@@ -913,12 +904,18 @@ const AppUI = {
 
   openDonorModal() {
     const modal = document.getElementById('donorModal');
-    if (modal) modal.classList.add('active');
+    if (modal) {
+      modal.classList.add('active');
+      modal.style.display = 'flex';
+    }
   },
 
   closeDonorModal() {
     const modal = document.getElementById('donorModal');
-    if (modal) modal.classList.remove('active');
+    if (modal) {
+      modal.classList.remove('active');
+      modal.style.display = 'none';
+    }
   },
 
   bindDonorForm() {
@@ -1456,6 +1453,30 @@ const AppUI = {
   bindAuthModal() {
     const loginForm = document.getElementById('authLoginForm');
     const registerForm = document.getElementById('authRegisterForm');
+    const navLoginBtn = document.getElementById('navLoginBtn');
+    const navRegisterBtn = document.getElementById('navRegisterBtn');
+    const navSignOutBtn = document.getElementById('navSignOutBtn');
+
+    if (navLoginBtn) {
+      navLoginBtn.onclick = (e) => {
+        e.preventDefault();
+        this.openAuthModal('login');
+      };
+    }
+
+    if (navRegisterBtn) {
+      navRegisterBtn.onclick = (e) => {
+        e.preventDefault();
+        this.openAuthModal('register');
+      };
+    }
+
+    if (navSignOutBtn) {
+      navSignOutBtn.onclick = (e) => {
+        e.preventDefault();
+        this.logout();
+      };
+    }
 
     this.populateLoginFacilities();
 
@@ -1492,6 +1513,9 @@ const AppUI = {
             
             this.updateAuthHeaderUI();
             this.closeAuthModal();
+            this.playNotificationSound();
+            const displayName = data.user.facilityName || data.user.username;
+            AppState.addNotification('Portal Access', `Signed in successfully as ${displayName}. Connected to emergency dispatch network.`, 'success');
             this.showToast(data.message || 'Signed in successfully!', 'success');
 
             // Route to dashboard
@@ -1510,9 +1534,22 @@ const AppUI = {
             if (role === 'hospital') AppState.activeHospitalId = facilityId;
             else AppState.activeSourceId = facilityId;
           }
+          const facName = (role === 'hospital' ? AppState.hospitals : AppState.sources)?.find(x => x.id === facilityId)?.name || role;
+          AppState.currentUser = {
+            id: 1,
+            username: facName,
+            facilityName: facName,
+            role: role,
+            facility_id: facilityId
+          };
+          try { localStorage.setItem('lifelink_user', JSON.stringify(AppState.currentUser)); } catch (e) {}
+          this.updateAuthHeaderUI();
           this.closeAuthModal();
-          this.updateRoleViewContext();
-          this.showToast(`Signed in as ${role}!`, 'success');
+          this.playNotificationSound();
+          AppState.addNotification('Portal Access', `Signed in as ${facName}. (Offline Ready Mode)`, 'success');
+          this.showToast(`Signed in as ${facName}!`, 'success');
+          if (role === 'hospital') this.switchTab('hospital-dashboard');
+          else if (role === 'blood_bank' || role === 'source') this.switchTab('source-dashboard');
         } finally {
           if (submitBtn) {
             submitBtn.disabled = false;
@@ -1583,6 +1620,8 @@ const AppUI = {
             this.updateAuthHeaderUI();
             this.closeAuthModal();
             this.renderAll();
+            this.playNotificationSound();
+            AppState.addNotification('Facility Registered', `${facilityName} registered in database. Active and ready for emergency requisitions.`, 'success');
             this.showToast(`${facilityName} registered in database!`, 'success');
 
             if (facilityType === 'hospital') {
@@ -1610,6 +1649,7 @@ const AppUI = {
     const modal = document.getElementById('authModal');
     if (modal) {
       modal.classList.add('active');
+      modal.style.display = 'flex';
       this.populateLoginFacilities();
       this.switchAuthTab(tab);
     }
@@ -1617,7 +1657,10 @@ const AppUI = {
 
   closeAuthModal() {
     const modal = document.getElementById('authModal');
-    if (modal) modal.classList.remove('active');
+    if (modal) {
+      modal.classList.remove('active');
+      modal.style.display = 'none';
+    }
   },
 
   switchAuthTab(tab) {
@@ -1648,12 +1691,64 @@ const AppUI = {
       titleElem.innerText = title;
       bodyElem.innerHTML = bodyHtml;
       modal.classList.add('active');
+      modal.style.display = 'flex';
     }
   },
 
   closeGenericModal() {
     const modal = document.getElementById('genericModal');
-    if (modal) modal.classList.remove('active');
+    if (modal) {
+      modal.classList.remove('active');
+      modal.style.display = 'none';
+    }
+  },
+
+  playNotificationSound() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.35);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.35);
+    } catch (e) {
+      // AudioContext blocked until gesture
+    }
+  },
+
+  pollerInterval: null,
+  startNotificationPoller() {
+    if (this.pollerInterval) clearInterval(this.pollerInterval);
+    this.pollerInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/notifications`);
+        if (res.ok) {
+          const fresh = await res.json();
+          if (Array.isArray(fresh) && fresh.length > 0) {
+            const currentKeys = new Set(AppState.notifications.map(n => n.id || (n.title + ':' + n.message)));
+            const newArrivals = fresh.filter(n => !currentKeys.has(n.id || (n.title + ':' + n.message)));
+            if (newArrivals.length > 0) {
+              AppState.notifications = [...newArrivals, ...AppState.notifications];
+              this.renderNotifications();
+              newArrivals.slice(0, 2).forEach(n => {
+                this.showToast(`${n.title}: ${n.message}`, n.type || 'info');
+              });
+              this.playNotificationSound();
+            }
+          }
+        }
+      } catch (e) {
+        // Polling silent fallback
+      }
+    }, 8000);
   },
 
   showToast(message, type = 'info') {
@@ -1676,6 +1771,27 @@ const AppUI = {
     }, 4500);
   }
 };
+
+// Global backdrop dismissal and keyboard shortcuts
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {
+    e.target.classList.remove('active');
+    e.target.style.display = 'none';
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.active').forEach(m => {
+      m.classList.remove('active');
+      m.style.display = 'none';
+    });
+  }
+});
+
+// Expose globals for inline event handlers
+window.AppUI = AppUI;
+window.AppState = AppState;
 
 // Auto-initialize when DOM ready
 document.addEventListener('DOMContentLoaded', () => {
