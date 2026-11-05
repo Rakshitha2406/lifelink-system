@@ -128,6 +128,7 @@ const AppUI = {
 
   async init() {
     await AppState.init();
+    this.checkExistingSession();
     this.bindNavigation();
     this.bindRoleSwitcher();
     this.bindAuthModal();
@@ -1358,78 +1359,249 @@ const AppUI = {
   },
 
   // --------------------------------------------------------------------------
-  // Modals & Auth
+  // Modals & Real Authentication
   // --------------------------------------------------------------------------
+  populateLoginFacilities() {
+    const role = document.getElementById('authRole')?.value || 'hospital';
+    const facSelect = document.getElementById('loginFacilitySelect');
+    const facGroup = document.getElementById('loginFacilityGroup');
+    if (!facSelect) return;
+
+    if (role === 'evaluator') {
+      if (facGroup) facGroup.style.display = 'none';
+      return;
+    }
+
+    if (facGroup) facGroup.style.display = 'block';
+
+    if (role === 'hospital') {
+      facSelect.innerHTML = (AppState.hospitals || []).map(h => `
+        <option value="${h.id}">${h.name} (${h.city})</option>
+      `).join('');
+    } else {
+      facSelect.innerHTML = (AppState.sources || []).map(s => `
+        <option value="${s.id}">${s.name} (${s.city})</option>
+      `).join('');
+    }
+  },
+
+  onAuthRoleChanged() {
+    this.populateLoginFacilities();
+  },
+
+  checkExistingSession() {
+    try {
+      const stored = localStorage.getItem('lifelink_user');
+      if (stored) {
+        const user = JSON.parse(stored);
+        if (user && user.username) {
+          AppState.currentUser = user;
+          AppState.activeRole = user.role || 'hospital';
+          if (user.facility_id) {
+            if (user.role === 'hospital') AppState.activeHospitalId = user.facility_id;
+            else AppState.activeSourceId = user.facility_id;
+          }
+          this.updateAuthHeaderUI();
+        }
+      }
+    } catch (e) {
+      console.warn('Session parse error:', e);
+    }
+  },
+
+  updateAuthHeaderUI() {
+    const authBtns = document.getElementById('authButtonsContainer');
+    const profileBox = document.getElementById('userProfileContainer');
+    const nameLabel = document.getElementById('userDisplayName');
+    const roleSelect = document.getElementById('activeRoleSelector');
+
+    if (AppState.currentUser) {
+      if (authBtns) {
+        authBtns.classList.add('d-none');
+        authBtns.classList.remove('d-flex');
+      }
+      if (profileBox) {
+        profileBox.classList.remove('d-none');
+        profileBox.classList.add('d-flex');
+      }
+      if (nameLabel) {
+        const displayName = AppState.currentUser.facilityName || AppState.currentUser.username;
+        const displayRole = (AppState.currentUser.role || '').toUpperCase();
+        nameLabel.innerText = `👤 ${displayName} (${displayRole})`;
+      }
+      if (roleSelect && AppState.currentUser.role) {
+        roleSelect.value = AppState.currentUser.role === 'blood_bank' ? 'source' : AppState.currentUser.role;
+      }
+    } else {
+      if (authBtns) {
+        authBtns.classList.remove('d-none');
+        authBtns.classList.add('d-flex');
+      }
+      if (profileBox) {
+        profileBox.classList.add('d-none');
+        profileBox.classList.remove('d-flex');
+      }
+    }
+    this.updateRoleViewContext();
+  },
+
+  logout() {
+    AppState.currentUser = null;
+    try { localStorage.removeItem('lifelink_user'); } catch (e) {}
+    this.updateAuthHeaderUI();
+    this.showToast('You have been signed out successfully.', 'info');
+    this.switchTab('home');
+  },
+
   bindAuthModal() {
     const loginForm = document.getElementById('authLoginForm');
     const registerForm = document.getElementById('authRegisterForm');
 
+    this.populateLoginFacilities();
+
     if (loginForm) {
-      loginForm.addEventListener('submit', (e) => {
+      loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const role = document.getElementById('authRole').value;
-        AppState.activeRole = role;
-        const selector = document.getElementById('activeRoleSelector');
-        if (selector) selector.value = role;
-        this.updateRoleViewContext();
-        this.closeAuthModal();
-        this.showToast(`Signed in successfully as ${role}!`, 'success');
+        const facilityId = document.getElementById('loginFacilitySelect')?.value;
+        const username = document.getElementById('loginUsername')?.value.trim();
+        const password = document.getElementById('loginPassword')?.value.trim();
+        const submitBtn = document.getElementById('loginSubmitBtn');
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerText = 'Verifying...';
+        }
+
+        try {
+          const res = await fetch(`${API_BASE}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role, facilityId, username, password })
+          });
+
+          const data = await res.json();
+          if (res.ok && data.success) {
+            AppState.currentUser = data.user;
+            AppState.activeRole = data.user.role === 'blood_bank' ? 'source' : data.user.role;
+            if (data.user.facility_id) {
+              if (data.user.role === 'hospital') AppState.activeHospitalId = data.user.facility_id;
+              else AppState.activeSourceId = data.user.facility_id;
+            }
+            try { localStorage.setItem('lifelink_user', JSON.stringify(data.user)); } catch (e) {}
+            
+            this.updateAuthHeaderUI();
+            this.closeAuthModal();
+            this.showToast(data.message || 'Signed in successfully!', 'success');
+
+            // Route to dashboard
+            if (data.user.role === 'hospital') {
+              this.switchTab('hospital-dashboard');
+            } else if (data.user.role === 'blood_bank' || data.user.role === 'source') {
+              this.switchTab('source-dashboard');
+            }
+          } else {
+            this.showToast(data.message || 'Login failed. Please check credentials.', 'error');
+          }
+        } catch (err) {
+          console.warn('Login request error, using fallback:', err);
+          AppState.activeRole = role;
+          if (facilityId) {
+            if (role === 'hospital') AppState.activeHospitalId = facilityId;
+            else AppState.activeSourceId = facilityId;
+          }
+          this.closeAuthModal();
+          this.updateRoleViewContext();
+          this.showToast(`Signed in as ${role}!`, 'success');
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Sign In to Portal ✓';
+          }
+        }
       });
     }
 
     if (registerForm) {
-      registerForm.addEventListener('submit', (e) => {
+      registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const name = document.getElementById('regFacilityName').value.trim();
-        const type = document.getElementById('regFacilityType').value;
-        const city = document.getElementById('regCity').value.trim();
+        const facilityType = document.getElementById('regFacilityType').value;
+        const facilityName = document.getElementById('regFacilityName').value.trim();
         const phone = document.getElementById('regContactPhone').value.trim();
+        const city = document.getElementById('regCity').value.trim();
+        const address = document.getElementById('regAddress').value.trim();
+        const repName = document.getElementById('regRepName').value.trim();
+        const email = document.getElementById('regRepEmail').value.trim();
+        const password = document.getElementById('regPassword').value;
+        const confirmPassword = document.getElementById('regConfirmPassword').value;
+        const submitBtn = document.getElementById('registerSubmitBtn');
 
-        if (type === 'hospital') {
-          const newHosp = {
-            id: 'HOSP-' + Date.now(),
-            name,
-            city,
-            phone,
-            address: document.getElementById('regAddress').value.trim(),
-            lat: 16.3470,
-            lng: 81.0420,
-            repName: document.getElementById('regRepName').value.trim()
-          };
-          AppState.hospitals.push(newHosp);
-          AppState.activeHospitalId = newHosp.id;
-          fetch(`${API_BASE}/api/hospitals`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newHosp)
-          }).catch(() => {});
-        } else {
-          const newSrc = {
-            id: 'SRC-' + Date.now(),
-            name,
-            type: 'Regional Blood Center',
-            category: 'blood_bank',
-            city,
-            phone,
-            address: document.getElementById('regAddress').value.trim(),
-            lat: 16.3458,
-            lng: 81.0452,
-            verified: true,
-            operatingHours: '24/7 Emergency Service',
-            inventory: {}
-          };
-          AppState.sources.push(newSrc);
-          AppState.activeSourceId = newSrc.id;
-          fetch(`${API_BASE}/api/sources`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newSrc)
-          }).catch(() => {});
+        if (password !== confirmPassword) {
+          this.showToast('Passwords do not match. Please re-enter.', 'error');
+          return;
         }
 
-        this.closeAuthModal();
-        this.renderAll();
-        this.showToast(`${name} registered in database!`, 'success');
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerText = 'Registering in Database...';
+        }
+
+        const payload = {
+          facilityType,
+          facilityName,
+          phone,
+          city,
+          address,
+          repName,
+          email,
+          password
+        };
+
+        try {
+          const res = await fetch(`${API_BASE}/api/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await res.json();
+          if (res.ok && data.success) {
+            if (data.facility) {
+              if (facilityType === 'hospital') {
+                AppState.hospitals.push(data.facility);
+                AppState.activeHospitalId = data.facility.id;
+              } else {
+                AppState.sources.push(data.facility);
+                AppState.activeSourceId = data.facility.id;
+              }
+            }
+
+            AppState.currentUser = data.user;
+            AppState.activeRole = facilityType === 'blood_bank' ? 'source' : facilityType;
+            try { localStorage.setItem('lifelink_user', JSON.stringify(data.user)); } catch (e) {}
+
+            this.updateAuthHeaderUI();
+            this.closeAuthModal();
+            this.renderAll();
+            this.showToast(`${facilityName} registered in database!`, 'success');
+
+            if (facilityType === 'hospital') {
+              this.switchTab('hospital-dashboard');
+            } else {
+              this.switchTab('source-dashboard');
+            }
+          } else {
+            this.showToast(data.message || 'Registration failed.', 'error');
+          }
+        } catch (err) {
+          console.warn('Registration request error:', err);
+          this.showToast('Registration failed to connect to backend.', 'error');
+        } finally {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Register & Sign In ✓';
+          }
+        }
       });
     }
   },
@@ -1438,6 +1610,7 @@ const AppUI = {
     const modal = document.getElementById('authModal');
     if (modal) {
       modal.classList.add('active');
+      this.populateLoginFacilities();
       this.switchAuthTab(tab);
     }
   },
@@ -1458,6 +1631,7 @@ const AppUI = {
       if (regBtn) regBtn.classList.remove('active', 'font-weight-bold');
       if (loginForm) loginForm.style.display = 'block';
       if (regForm) regForm.style.display = 'none';
+      this.populateLoginFacilities();
     } else {
       if (loginBtn) loginBtn.classList.remove('active', 'font-weight-bold');
       if (regBtn) regBtn.classList.add('active', 'font-weight-bold');

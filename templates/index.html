@@ -83,13 +83,21 @@
           </div>
         </div>
 
-        <!-- Auth Buttons -->
-        <button class="btn btn-outline-primary btn-sm" onclick="AppUI.openAuthModal('login')" title="Sign in as Hospital or Blood Bank">
-          Login
-        </button>
-        <button class="btn btn-primary btn-sm" onclick="AppUI.openAuthModal('register')" title="Register New Healthcare Facility">
-          Register
-        </button>
+        <!-- Auth Section (Dynamic Login vs Logged In Profile) -->
+        <div id="authButtonsContainer" class="d-flex align-items-center gap-2">
+          <button class="btn btn-outline-primary btn-sm" onclick="AppUI.openAuthModal('login')" title="Sign in as Hospital or Blood Bank">
+            Login
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="AppUI.openAuthModal('register')" title="Register New Healthcare Facility">
+            Register
+          </button>
+        </div>
+        <div id="userProfileContainer" class="d-none align-items-center gap-2">
+          <span class="badge bg-light text-dark border px-2 py-1" id="userDisplayName">👤 User</span>
+          <button class="btn btn-outline-danger btn-sm" onclick="AppUI.logout()" title="Sign out of your account">
+            Sign Out
+          </button>
+        </div>
 
         <!-- Reset State Button -->
         <button class="btn btn-outline-secondary btn-sm" onclick="AppState.resetAllData()" title="Reset demo records to clean state">
@@ -1017,29 +1025,38 @@
         <div id="authLoginFormContainer">
           <form id="authLoginForm">
             <div class="form-group">
-              <label class="form-label" for="authRole">Login As</label>
-              <select id="authRole" class="form-select">
-                <option value="hospital">Hospital Authority / ICU Lead</option>
-                <option value="source">Blood Bank Officer / Storage Lead</option>
-                <option value="evaluator">Emergency Network Coordinator</option>
+              <label class="form-label" for="authRole">Login Role</label>
+              <select id="authRole" class="form-select" onchange="AppUI.onAuthRoleChanged()">
+                <option value="hospital">🏥 Hospital / Trauma Center Lead</option>
+                <option value="source">🩸 Blood Bank / Transfusion Officer</option>
+                <option value="evaluator">⚡ Emergency Network Coordinator</option>
               </select>
             </div>
-            <div class="form-group">
-              <label class="form-label" for="loginFacilitySelect">Select Registered Facility</label>
+            
+            <div class="form-group" id="loginFacilityGroup">
+              <label class="form-label" for="loginFacilitySelect">Select Your Registered Facility</label>
               <select id="loginFacilitySelect" class="form-select">
-                <!-- Dynamically populated -->
+                <!-- Dynamically populated from backend -->
               </select>
+              <div class="form-text">Choose your facility to auto-link your inventory & requisitions.</div>
             </div>
+
             <div class="form-group">
-              <label class="form-label" for="loginPassword">Access Password</label>
-              <input type="password" id="loginPassword" class="form-control" value="password123" required>
-              <span class="smaller text-muted">Default demo access password is <code>password123</code></span>
+              <label class="form-label" for="loginUsername">Username or Official Email (Optional)</label>
+              <input type="text" id="loginUsername" class="form-control" placeholder="e.g. hospital_admin or admin@metrocare.org">
             </div>
+
+            <div class="form-group">
+              <label class="form-label" for="loginPassword">Access Password *</label>
+              <input type="password" id="loginPassword" class="form-control" value="password123" required placeholder="Enter password">
+              <span class="smaller text-muted">Default system access password is <code>password123</code></span>
+            </div>
+
             <div class="d-flex justify-content-between align-items-center mt-3">
               <button type="button" class="btn btn-outline-secondary btn-sm" onclick="AppUI.switchAuthTab('register')">
                 New facility? Register
               </button>
-              <button type="submit" class="btn btn-primary">
+              <button type="submit" class="btn btn-primary" id="loginSubmitBtn">
                 Sign In to Portal ✓
               </button>
             </div>
@@ -1050,19 +1067,19 @@
         <div id="authRegisterFormContainer" style="display: none;">
           <form id="authRegisterForm">
             <div class="form-group">
-              <label class="form-label" for="regFacilityType">Facility Type</label>
-              <select id="regFacilityType" class="form-select">
-                <option value="hospital">Emergency Hospital / Trauma Center</option>
-                <option value="blood_bank">Blood Bank / Blood Center</option>
+              <label class="form-label" for="regFacilityType">Facility Category *</label>
+              <select id="regFacilityType" class="form-select" required>
+                <option value="hospital">🏥 Emergency Hospital / Trauma Care</option>
+                <option value="blood_bank">🩸 Accredited Blood Bank / Blood Center</option>
               </select>
             </div>
             <div class="form-group">
               <label class="form-label" for="regFacilityName">Official Facility Name *</label>
-              <input type="text" id="regFacilityName" class="form-control" required placeholder="e.g. Life Care Emergency Hospital">
+              <input type="text" id="regFacilityName" class="form-control" required placeholder="e.g. Apollo Trauma & Emergency Center">
             </div>
             <div class="row">
               <div class="col-md-6 form-group">
-                <label class="form-label" for="regContactPhone">Emergency Phone *</label>
+                <label class="form-label" for="regContactPhone">Emergency Phone Hotline *</label>
                 <input type="tel" id="regContactPhone" class="form-control" required placeholder="+91 86742 00000">
               </div>
               <div class="col-md-6 form-group">
@@ -1072,23 +1089,33 @@
             </div>
             <div class="form-group">
               <label class="form-label" for="regAddress">Full Street Address *</label>
-              <input type="text" id="regAddress" class="form-control" required placeholder="Main Road, Sector...">
+              <input type="text" id="regAddress" class="form-control" required placeholder="Main Hospital Road, Sector 3">
             </div>
             <div class="row">
               <div class="col-md-6 form-group">
-                <label class="form-label" for="regRepName">Authorized Representative *</label>
+                <label class="form-label" for="regRepName">Authorized Officer / In-Charge *</label>
                 <input type="text" id="regRepName" class="form-control" required placeholder="Dr. / Transfusion Lead Name">
               </div>
               <div class="col-md-6 form-group">
-                <label class="form-label" for="regRepEmail">Official Facility Email *</label>
-                <input type="email" id="regRepEmail" class="form-control" required placeholder="contact@facility.org">
+                <label class="form-label" for="regRepEmail">Official Email Address *</label>
+                <input type="email" id="regRepEmail" class="form-control" required placeholder="trauma@facility.org">
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-md-6 form-group">
+                <label class="form-label" for="regPassword">Create Password *</label>
+                <input type="password" id="regPassword" class="form-control" required placeholder="Min 6 characters" value="password123">
+              </div>
+              <div class="col-md-6 form-group">
+                <label class="form-label" for="regConfirmPassword">Confirm Password *</label>
+                <input type="password" id="regConfirmPassword" class="form-control" required placeholder="Re-enter password" value="password123">
               </div>
             </div>
             <div class="d-flex justify-content-between align-items-center mt-3">
               <button type="button" class="btn btn-outline-secondary btn-sm" onclick="AppUI.switchAuthTab('login')">
                 Already registered? Sign In
               </button>
-              <button type="submit" class="btn btn-primary">
+              <button type="submit" class="btn btn-primary" id="registerSubmitBtn">
                 Register & Sign In ✓
               </button>
             </div>

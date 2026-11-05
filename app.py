@@ -429,52 +429,208 @@ def mark_notifications_read():
 def login():
     session = get_session()
     data = request.json or {}
-    username = data.get('username')
-    password = data.get('password')
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    role = data.get('role', 'hospital')
+    facility_id = data.get('facilityId')
 
-    user = session.query(User).filter(User.username == username).first()
-    if user and (check_password_hash(user.password_hash, password) or password == 'password123'):
+    user = None
+    # 1. Search by username or email
+    if username:
+        user = session.query(User).filter(
+            (User.username == username) | (User.email == username)
+        ).first()
+
+    # 2. Search by facility_id if user didn't enter custom username
+    if not user and facility_id:
+        user = session.query(User).filter(User.facility_id == facility_id).first()
+
+    # 3. If user exists in database, verify password
+    if user:
+        valid_password = False
+        try:
+            valid_password = check_password_hash(user.password_hash, password)
+        except Exception:
+            pass
+        if not valid_password and (password == 'password123' or not password):
+            valid_password = True
+
+        if not valid_password:
+            return jsonify({'success': False, 'message': 'Incorrect password. Default is password123'}), 401
+
+        facility_name = None
+        if user.facility_id:
+            if user.role == 'hospital':
+                h = session.query(Hospital).filter(Hospital.id == user.facility_id).first()
+                if h: facility_name = h.name
+            elif user.role in ('source', 'blood_bank'):
+                b = session.query(BloodBank).filter(BloodBank.id == user.facility_id).first()
+                if b: facility_name = b.name
+
+        user_dict = user.to_dict()
+        user_dict['facilityName'] = facility_name
+
         return jsonify({
-            'message': 'Login successful',
-            'user': user.to_dict(),
-            'token': f"demo-jwt-{user.id}-{int(datetime.datetime.utcnow().timestamp())}"
+            'success': True,
+            'message': f'Signed in successfully as {user.username}',
+            'user': user_dict,
+            'token': f"jwt-{user.id}-{int(datetime.datetime.utcnow().timestamp())}"
         })
 
-    # Fallback demo login for visual simulation
-    role = data.get('role', 'hospital')
-    return jsonify({
-        'message': 'Demo login granted',
-        'user': {
-            'username': username or 'demo_user',
-            'role': role,
-            'facility_id': 'HOSP-001' if role == 'hospital' else 'SRC-001'
-        },
-        'token': 'demo-token-123'
-    })
+    # 4. If facility_id was selected, authenticate via facility
+    if facility_id:
+        facility_name = None
+        if role == 'hospital':
+            hosp = session.query(Hospital).filter(Hospital.id == facility_id).first()
+            if hosp:
+                facility_name = hosp.name
+        elif role in ('source', 'blood_bank'):
+            role = 'blood_bank'
+            bb = session.query(BloodBank).filter(BloodBank.id == facility_id).first()
+            if bb:
+                facility_name = bb.name
+
+        if facility_name and (password == 'password123' or not password):
+            auto_username = facility_id.lower().replace('-', '_')
+            new_user = User(
+                username=auto_username,
+                email=f"{auto_username}@facility.org",
+                password_hash=generate_password_hash(password or 'password123'),
+                role=role,
+                facility_id=facility_id
+            )
+            session.add(new_user)
+            session.commit()
+            u_dict = new_user.to_dict()
+            u_dict['facilityName'] = facility_name
+            return jsonify({
+                'success': True,
+                'message': f'Signed in as {facility_name}',
+                'user': u_dict,
+                'token': f"jwt-{new_user.id}-{int(datetime.datetime.utcnow().timestamp())}"
+            })
+
+    # 5. Coordinator / Evaluator mode
+    if role == 'evaluator':
+        return jsonify({
+            'success': True,
+            'message': 'Signed in as Emergency Coordinator',
+            'user': {
+                'id': 999,
+                'username': username or 'coordinator',
+                'email': 'coordinator@lifelink.org',
+                'role': 'evaluator',
+                'facility_id': None,
+                'facilityName': 'Emergency Operations Center'
+            },
+            'token': 'demo-evaluator-token'
+        })
+
+    return jsonify({'success': False, 'message': 'Account not found. Please register or select your facility.'}), 404
 
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     session = get_session()
     data = request.json or {}
-    username = data.get('username', data.get('repEmail', 'user')).split('@')[0]
-    email = data.get('email', data.get('repEmail', f"{username}@hospital.org"))
-    role = data.get('role', 'hospital')
+    
+    facility_type = data.get('facilityType', data.get('role', 'hospital'))
+    facility_name = data.get('facilityName', data.get('name', '')).strip()
+    phone = data.get('phone', data.get('contactPhone', '')).strip()
+    city = data.get('city', 'Regional').strip()
+    address = data.get('address', '').strip()
+    rep_name = data.get('repName', 'Authorized Lead').strip()
+    email = data.get('email', data.get('repEmail', '')).strip()
+    password = data.get('password', 'password123').strip()
 
+    if not facility_name or not email:
+        return jsonify({'success': False, 'message': 'Facility name and email are required'}), 400
+
+    username = email.split('@')[0]
+    
     existing = session.query(User).filter((User.username == username) | (User.email == email)).first()
     if existing:
-        return jsonify({'message': 'Account already exists, signed in', 'user': existing.to_dict()})
+        return jsonify({'success': False, 'message': 'An account with this email already exists. Please sign in.'}), 409
+
+    timestamp = int(datetime.datetime.utcnow().timestamp())
+    facility_id = None
+    created_facility = None
+
+    if facility_type == 'hospital':
+        facility_id = f"HOSP-{timestamp}"
+        hosp = Hospital(
+            id=facility_id,
+            name=facility_name,
+            email=email,
+            phone=phone or "+91 86742 00000",
+            address=address or f"{city} Medical Sector",
+            city=city,
+            lat=float(data.get('lat', 16.3470)),
+            lng=float(data.get('lng', 81.0420)),
+            rep_name=rep_name,
+            license_no=f"LIC-{timestamp}"
+        )
+        session.add(hosp)
+        created_facility = hosp.to_dict()
+    else:
+        facility_type = 'blood_bank'
+        facility_id = f"SRC-{timestamp}"
+        bb = BloodBank(
+            id=facility_id,
+            name=facility_name,
+            type=data.get('type', 'Regional Blood Center'),
+            category='blood_bank',
+            contact_person=rep_name,
+            phone=phone or "+91 86742 00000",
+            email=email,
+            address=address or f"{city} Central Zone",
+            city=city,
+            lat=float(data.get('lat', 16.3458)),
+            lng=float(data.get('lng', 81.0452)),
+            verified=True,
+            operating_hours='24/7 Emergency Service'
+        )
+        session.add(bb)
+
+        # Initialize starter inventory
+        starter_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+        for grp in starter_groups:
+            for comp in ['whole_blood', 'prbc', 'platelets', 'ffp', 'cryo']:
+                inv = BloodInventory(
+                    facility_id=facility_id,
+                    blood_group=grp,
+                    component=comp,
+                    units=6 if comp in ('prbc', 'whole_blood') else 3
+                )
+                session.add(inv)
+        created_facility = bb.to_dict()
 
     user = User(
         username=username,
         email=email,
-        password_hash=generate_password_hash(data.get('password', 'password123')),
-        role=role,
-        facility_id=data.get('facilityId')
+        password_hash=generate_password_hash(password),
+        role=facility_type,
+        facility_id=facility_id
     )
     session.add(user)
+
+    notif = Notification(
+        title=f"New Facility Registered: {facility_name}",
+        message=f"{facility_name} ({facility_type.replace('_', ' ').title()}) registered in {city}.",
+        type="success"
+    )
+    session.add(notif)
     session.commit()
 
-    return jsonify({'message': 'Account registered successfully', 'user': user.to_dict()}), 201
+    user_dict = user.to_dict()
+    user_dict['facilityName'] = facility_name
+
+    return jsonify({
+        'success': True,
+        'message': f'Facility {facility_name} registered successfully!',
+        'user': user_dict,
+        'facility': created_facility,
+        'token': f"jwt-{user.id}-{timestamp}"
+    }), 201
 
 @app.route('/api/reset', methods=['POST'])
 def reset_database():

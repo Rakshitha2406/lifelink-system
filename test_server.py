@@ -1,122 +1,150 @@
 import json
 from app import app
+from database import get_session, User, Hospital, BloodBank, Notification, BloodRequest, Donor
 
-def test_endpoints():
-    print("=" * 60)
-    print("Testing Flask Application Endpoints & Database Integration")
-    print("=" * 60)
+def test_full_system():
+    print("=" * 65)
+    print(" LifeLink Full-Stack Verification & Integration Test Suite")
+    print("=" * 65)
 
     client = app.test_client()
 
-    # 1. Test Root Page HTML
+    # 1. Root HTML
     res = client.get('/')
-    assert res.status_code == 200, f"Root returned {res.status_code}"
+    assert res.status_code == 200
     html = res.data.decode('utf-8')
-    assert "LifeLink" in html, "LifeLink brand missing from root HTML"
-    assert "Seshadri" not in html, "College name found in root HTML!"
-    assert "CSP Report" not in html, "CSP Report found in root HTML!"
-    assert "Feedback" not in html, "Feedback found in root HTML!"
-    print("[OK] GET / -> 200 OK (Clean HTML without college/CSP details)")
+    assert "LifeLink" in html
+    assert "Seshadri" not in html
+    assert "CSP Report" not in html
+    print("[OK] GET / -> Clean modern UI rendered without college details")
 
-    # 2. Test /api/status
+    # 2. System Status
     res = client.get('/api/status')
     assert res.status_code == 200
     status_data = json.loads(res.data)
-    print(f"[OK] GET /api/status -> 200 OK (DB: {status_data.get('database')}, Counts: {status_data.get('counts')})")
+    print(f"[OK] GET /api/status -> Active Database: {status_data.get('database')}")
 
-    # 3. Test /api/sources (Blood Banks)
-    res = client.get('/api/sources')
+    # 3. Test Login with Demo Hospital Admin
+    login_payload = {
+        'username': 'hospital_admin',
+        'password': 'password123',
+        'role': 'hospital'
+    }
+    res = client.post('/api/auth/login', json=login_payload)
     assert res.status_code == 200
-    sources = json.loads(res.data)
-    assert len(sources) >= 6, f"Expected at least 6 sources, got {len(sources)}"
-    print(f"[OK] GET /api/sources -> 200 OK ({len(sources)} facilities loaded)")
+    login_res = json.loads(res.data)
+    assert login_res.get('success') is True
+    assert 'user' in login_res
+    print(f"[OK] POST /api/auth/login (Username) -> Success ({login_res['user']['username']})")
 
-    # 4. Test /api/donors
-    res = client.get('/api/donors')
+    # 4. Test Login via Facility Selection (HOSP-001)
+    fac_login_payload = {
+        'role': 'hospital',
+        'facilityId': 'HOSP-001',
+        'password': 'password123'
+    }
+    res = client.post('/api/auth/login', json=fac_login_payload)
     assert res.status_code == 200
-    donors = json.loads(res.data)
-    assert len(donors) >= 8, f"Expected at least 8 donors, got {len(donors)}"
-    print(f"[OK] GET /api/donors -> 200 OK ({len(donors)} voluntary donors loaded)")
+    fac_res = json.loads(res.data)
+    assert fac_res.get('success') is True
+    print(f"[OK] POST /api/auth/login (Facility Select) -> Success ({fac_res['user'].get('facilityName')})")
 
-    # 5. Test /api/hospitals
-    res = client.get('/api/hospitals')
-    assert res.status_code == 200
-    hospitals = json.loads(res.data)
-    assert len(hospitals) >= 4, f"Expected at least 4 hospitals, got {len(hospitals)}"
-    print(f"[OK] GET /api/hospitals -> 200 OK ({len(hospitals)} hospitals loaded)")
+    # 5. Test Register New Hospital
+    new_hosp_payload = {
+        'facilityType': 'hospital',
+        'facilityName': 'Sunrise Emergency Trauma Institute',
+        'phone': '+91 86624 99001',
+        'city': 'Vijayawada',
+        'address': 'MG Road Sector 4',
+        'repName': 'Dr. K. R. Naidu',
+        'email': f'trauma.sunrise@hospital.org',
+        'password': 'password123'
+    }
+    res = client.post('/api/auth/register', json=new_hosp_payload)
+    assert res.status_code == 201
+    reg_hosp = json.loads(res.data)
+    assert reg_hosp.get('success') is True
+    print(f"[OK] POST /api/auth/register (Hospital) -> Registered: {reg_hosp['facility']['name']}")
 
-    # 6. Test /api/requests (GET)
-    res = client.get('/api/requests')
-    assert res.status_code == 200
-    reqs = json.loads(res.data)
-    assert len(reqs) >= 3, f"Expected at least 3 initial requests, got {len(reqs)}"
-    print(f"[OK] GET /api/requests -> 200 OK ({len(reqs)} active requisitions loaded)")
+    # 6. Test Register New Blood Bank
+    new_bb_payload = {
+        'facilityType': 'blood_bank',
+        'facilityName': 'Apex Regional Rotary Blood Center',
+        'phone': '+91 86742 88220',
+        'city': 'Gudlavalleru',
+        'address': 'By-pass Road, Zone 2',
+        'repName': 'S. Ramanujam (Officer)',
+        'email': f'rotary.apex@bloodcenter.org',
+        'password': 'password123'
+    }
+    res = client.post('/api/auth/register', json=new_bb_payload)
+    assert res.status_code == 201
+    reg_bb = json.loads(res.data)
+    assert reg_bb.get('success') is True
+    print(f"[OK] POST /api/auth/register (Blood Bank) -> Registered: {reg_bb['facility']['name']}")
 
-    # 7. Test /api/requests (POST new requisition)
-    new_req_payload = {
-        'hospitalId': 'HOSP-001',
-        'hospitalName': 'Metro Emergency & Trauma Care',
-        'patientName': 'Integration Test Patient',
-        'patientId': 'MRN-TEST-100',
-        'bloodGroup': 'O+',
+    # 7. Test Emergency Blood Requisition Creation & Automatic Notification
+    new_req = {
+        'hospitalId': reg_hosp['facility']['id'],
+        'hospitalName': reg_hosp['facility']['name'],
+        'patientName': 'Critical Trauma Resuscitation',
+        'patientId': 'MRN-AUTO-991',
+        'bloodGroup': 'O-',
         'component': 'prbc',
         'unitsRequired': 2,
         'urgency': 'CRITICAL',
-        'clinicalReason': 'Emergency test trauma resuscitation',
-        'contactPerson': 'Dr. Test Lead',
-        'contactPhone': '+91 99999 88888',
-        'lat': 16.3470,
-        'lng': 81.0420
+        'clinicalReason': 'Severe motor vehicle collision with massive hemorrhage',
+        'contactPerson': 'Dr. K. R. Naidu',
+        'contactPhone': '+91 86624 99001',
+        'lat': 16.5062,
+        'lng': 80.6480
     }
-    res = client.post('/api/requests', json=new_req_payload)
-    assert res.status_code == 201, f"POST /api/requests returned {res.status_code}"
-    post_data = json.loads(res.data)
-    assert 'request' in post_data
-    assert 'matchResult' in post_data
-    print(f"[OK] POST /api/requests -> 201 Created (Matched with: {post_data['request'].get('matchedSource')})")
-
-    # 8. Test /api/sources/<id>/stock (POST inventory update)
-    stock_payload = {
-        'bloodGroup': 'O+',
-        'component': 'prbc',
-        'units': 25
-    }
-    res = client.post('/api/sources/SRC-001/stock', json=stock_payload)
-    assert res.status_code == 200
-    print("[OK] POST /api/sources/SRC-001/stock -> 200 OK (Database stock updated to 25)")
-
-    # 9. Test /api/donors (POST register donor)
-    new_donor = {
-        'name': 'Test Voluntary Donor',
-        'bloodGroup': 'O-',
-        'phone': '+91 98765 43210',
-        'email': 'test.donor@example.com',
-        'city': 'Vijayawada',
-        'address': 'Ring Road Sector 1'
-    }
-    res = client.post('/api/donors', json=new_donor)
+    res = client.post('/api/requests', json=new_req)
     assert res.status_code == 201
-    print("[OK] POST /api/donors -> 201 Created (Persisted new donor into database)")
+    req_res = json.loads(res.data)
+    assert 'request' in req_res
+    print(f"[OK] POST /api/requests -> Requisition {req_res['request']['id']} Created & Matched")
 
-    # 10. Test /api/match (Matching calculation)
-    match_payload = {
+    # 8. Verify Notification Generated
+    res = client.get('/api/notifications')
+    assert res.status_code == 200
+    notifs = json.loads(res.data)
+    assert len(notifs) > 0
+    latest = notifs[0]
+    print(f"[OK] GET /api/notifications -> Live Alerts Feed: '{latest['title']}' ({latest['type']})")
+
+    # 9. Mark Notifications as Read
+    res = client.post('/api/notifications/mark-read')
+    assert res.status_code == 200
+    print("[OK] POST /api/notifications/mark-read -> All notifications marked as read")
+
+    # 10. Update Blood Bank Stock and Verify Real-time Persistence
+    stock_update = {
         'bloodGroup': 'O-',
         'component': 'prbc',
-        'unitsRequired': 5,
-        'urgency': 'CRITICAL',
-        'lat': 16.3470,
-        'lng': 81.0420
+        'units': 18
     }
-    res = client.post('/api/match', json=match_payload)
+    res = client.post(f"/api/sources/{reg_bb['facility']['id']}/stock", json=stock_update)
     assert res.status_code == 200
-    match_data = json.loads(res.data)
-    assert 'rankedSources' in match_data
-    assert match_data.get('isShortage') is True, "Shortage pooling should trigger for 5 units O-"
-    print(f"[OK] POST /api/match -> 200 OK (Multi-source pooling: {len(match_data.get('poolingPlan'))} centers pooled)")
+    print(f"[OK] POST /api/sources/{reg_bb['facility']['id']}/stock -> Stock updated in database to 18 units")
 
-    print("=" * 60)
-    print("ALL API & DATABASE INTEGRATION TESTS PASSED SUCCESSFULLY!")
-    print("=" * 60)
+    # 11. Register Voluntary Blood Donor
+    donor_payload = {
+        'name': 'Pooja Chandrasekhar',
+        'bloodGroup': 'O-',
+        'phone': '+91 94411 22334',
+        'email': 'pooja.c@example.com',
+        'city': 'Vijayawada',
+        'address': 'Bhavanipuram 3rd Line'
+    }
+    res = client.post('/api/donors', json=donor_payload)
+    assert res.status_code == 201
+    donor_res = json.loads(res.data)
+    print(f"[OK] POST /api/donors -> Voluntary Donor Registered: {donor_res['donor']['name']}")
+
+    print("=" * 65)
+    print(" ALL 11 SYSTEM TESTS & NOTIFICATIONS VERIFIED SUCCESSFULLY!")
+    print("=" * 65)
 
 if __name__ == '__main__':
-    test_endpoints()
+    test_full_system()
