@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LifeLink — Smart Emergency Blood Availability & Matching System</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 8 C50 8 18 45 18 68 C18 85 32 95 50 95 C68 95 82 85 82 68 C82 45 50 8 50 8 Z' fill='%23dc2626'/><path d='M35 62 L43 62 L47 50 L53 74 L57 62 L65 62' stroke='white' stroke-width='4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Site Header -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <!-- Logo & Brand -->
+      <a class="logo-wrapper" data-tab-target="home" style="cursor: pointer;">
+        <svg class="logo-icon-svg" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="50" cy="50" r="48" fill="#fef2f2" stroke="#dc2626" stroke-width="3"/>
+          <path d="M50 14 C50 14 24 46 24 67 C24 81 35 90 50 90 C65 90 76 81 76 67 C76 46 50 14 50 14 Z" fill="#dc2626"/>
+          <!-- ECG Heartbeat Line inside Blood Drop -->
+          <path d="M36 65 L43 65 L47 54 L53 76 L57 65 L64 65" stroke="#ffffff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="logo-text-group">
+          <span class="brand-name">Life<span>Link</span></span>
+          <span class="brand-subtitle">Emergency Blood Matching System</span>
+        </div>
+      </a>
+
+      <!-- Desktop Navigation Menu -->
+      <ul class="nav-menu" id="navMenu">
+        <li><a class="nav-link active" data-tab-target="home">Home</a></li>
+        <li><a class="nav-link" data-tab-target="request-blood">Request Blood</a></li>
+        <li><a class="nav-link" data-tab-target="directory">Blood Banks</a></li>
+        <li><a class="nav-link" data-tab-target="donors">Donors</a></li>
+        <li><a class="nav-link" data-tab-target="matching">Smart Matcher</a></li>
+        <li><a class="nav-link" data-tab-target="hospital-dashboard">Hospital Portal</a></li>
+        <li><a class="nav-link" data-tab-target="source-dashboard">Blood Bank Portal</a></li>
+        <li><a class="nav-link" data-tab-target="scenarios">Test Scenarios</a></li>
+        <li><a class="nav-link" data-tab-target="about">About</a></li>
+      </ul>
+
+      <!-- Header Actions: Role Switcher, Notifications, DB Badge & Auth -->
+      <div class="header-actions">
+        <!-- DB Engine Status Badge -->
+        <span class="badge bg-light text-dark border d-none d-lg-inline-block small" id="dbStatusBadge" title="Backend Database Status">
+          💾 DB: Connecting...
+        </span>
+
+        <!-- Role Simulator Badge -->
+        <div class="role-badge-box">
+          <select id="activeRoleSelector" class="role-select-compact" title="Switch User Role in System">
+            <option value="hospital">🏥 Role: Hospital</option>
+            <option value="source">🩸 Role: Blood Bank</option>
+            <option value="evaluator">⚡ Coordinator Mode</option>
+          </select>
+        </div>
+
+        <!-- Notification Bell -->
+        <div class="notif-wrapper">
+          <button class="notif-bell-btn" id="notifBellBtn" onclick="AppUI.toggleNotificationDrawer()" title="View Notifications">
+            🔔
+            <span class="notif-badge" id="notifCountBadge">0</span>
+          </button>
+          <div class="notification-drawer" id="notificationDrawer">
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+              <strong class="small text-uppercase">Emergency Alerts</strong>
+              <span class="badge bg-secondary small" id="liveAlertsCount">Live Sync</span>
+            </div>
+            <div id="notificationsDropdownList"></div>
+          </div>
+        </div>
+
+        <!-- Auth Buttons -->
+        <button class="btn btn-outline-primary btn-sm" onclick="AppUI.openAuthModal('login')" title="Sign in as Hospital or Blood Bank">
+          Login
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="AppUI.openAuthModal('register')" title="Register New Healthcare Facility">
+          Register
+        </button>
+
+        <!-- Reset State Button -->
+        <button class="btn btn-outline-secondary btn-sm" onclick="AppState.resetAllData()" title="Reset demo records to clean state">
+          ↺ Reset
+        </button>
+
+        <!-- Mobile Nav Toggle -->
+        <button class="mobile-nav-toggle" id="mobileNavToggle" aria-label="Toggle Navigation">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Body -->
+  <main class="main-content">
+    <div class="container">
+
+      <!-- Active Role & System Banner -->
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div id="currentRoleBadge">
+          <span class="badge badge-hospital">🏥 Acting as: Metro Emergency & Trauma Care</span>
+        </div>
+        <div class="small text-muted" id="serverInfoBanner">
+          ⚡ LifeLink Transfusion Network • Python Flask & MySQL Backend
+        </div>
+      </div>
+
+      <!-- ================================================================== -->
+      <!-- TAB 1: HOME PAGE                                                  -->
+      <!-- ================================================================== -->
+      <section class="tab-view active" id="tab-home">
+        <!-- Hero Section -->
+        <div class="hero-section">
+          <div class="hero-tag">⚡ Emergency Healthcare Network • Smart Blood Matching</div>
+          <h1 class="hero-title">Connecting Blood Needs to Suitable Sources, <span>Faster.</span></h1>
+          <p class="hero-subtitle">
+            LifeLink is a centralized emergency decision-support platform designed to eliminate the chaotic, 
+            time-consuming manual search for compatible blood during life-threatening medical emergencies. 
+            By uniting compatibility rules, verified stock, urgency tiers, and location-based scoring, we bridge 
+            the vital minutes between critical trauma calls and transfusion.
+          </p>
+
+          <div class="hero-actions">
+            <button class="btn btn-primary btn-lg" data-tab-target="request-blood">
+              🚨 Request Emergency Blood
+            </button>
+            <button class="btn btn-outline-secondary btn-lg" data-tab-target="directory">
+              🔍 Find Blood Sources
+            </button>
+            <button class="btn btn-outline-primary btn-lg" data-tab-target="donors">
+              🩸 Voluntary Donors
+            </button>
+            <button class="btn btn-outline-secondary btn-lg" data-tab-target="scenarios">
+              🧪 Run Test Scenarios
+            </button>
+          </div>
+
+          <!-- Clinical System Banner -->
+          <div class="clinical-disclaimer-box mt-4">
+            <span class="disclaimer-icon">🛡️</span>
+            <div>
+              <strong>Emergency Decision Support System:</strong> 
+              Real-time multi-factor matching combining blood group compatibility verification, 
+              verified bank inventories, urgency tiers, and GPS distance analysis to connect healthcare facilities instantly.
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Platform Statistics -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon red">🩸</div>
+            <div class="stat-content">
+              <div class="stat-number" id="statTotalRequests">0</div>
+              <div class="stat-label">Total Requests</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon orange">⏳</div>
+            <div class="stat-content">
+              <div class="stat-number" id="statPendingRequests">0</div>
+              <div class="stat-label">Pending / In Review</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon blue">✓</div>
+            <div class="stat-content">
+              <div class="stat-number" id="statConfirmedRequests">0</div>
+              <div class="stat-label">Source Matched</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green">🏥</div>
+            <div class="stat-content">
+              <div class="stat-number" id="statFulfilledRequests">0</div>
+              <div class="stat-label">Fulfilled Transfusions</div>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon red">⚠️</div>
+            <div class="stat-content">
+              <div class="stat-number" id="statCriticalRequests">0</div>
+              <div class="stat-label">Critical Emergencies</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Plan Section (From Presentation Slide: Action Plan for Implementation) -->
+        <div class="section-headline mt-5">
+          <span class="section-tag">Action Plan for Implementation</span>
+          <h2 class="section-title">From Planning to Impact</h2>
+          <p class="section-subtitle">Simple steps. A stronger, faster blood support system.</p>
+        </div>
+
+        <div class="action-plan-grid">
+          <!-- Card 1 -->
+          <div class="action-card action-card-1">
+            <div class="action-badge-number">1</div>
+            <h4>Platform Development</h4>
+            <ul class="action-list">
+              <li>Design a simple, user-friendly web/mobile platform.</li>
+              <li>Create separate access for hospitals and blood sources.</li>
+              <li>Develop blood requirement and availability modules.</li>
+            </ul>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="action-card action-card-2">
+            <div class="action-badge-number">2</div>
+            <h4>Smart Matching & Location</h4>
+            <ul class="action-list">
+              <li>Implement blood-group and component compatibility rules.</li>
+              <li>Identify nearby available sources via distance analysis.</li>
+              <li>Consider urgency level and distance for prioritization.</li>
+            </ul>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="action-card action-card-3">
+            <div class="action-badge-number">3</div>
+            <h4>Emergency Notification & Testing</h4>
+            <ul class="action-list">
+              <li>Send immediate alerts to suitable sources.</li>
+              <li>Update inventory availability in real-time after confirmation.</li>
+              <li>Test the system rigorously for matching, location, and notifications.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- System Flow Section (From Presentation Slide: System Flow - 8 Steps) -->
+        <div class="section-headline mt-5">
+          <span class="section-tag">End-to-End System Flow</span>
+          <h2 class="section-title">System Flow</h2>
+          <p class="section-subtitle">From emergency request to matched confirmation — in simple steps.</p>
+        </div>
+
+        <div class="flow-step-grid">
+          <div class="flow-step-card">
+            <span class="flow-step-num">1</span>
+            <div class="flow-step-icon">🏥</div>
+            <div class="flow-step-title">Hospital Registers Blood Requirement</div>
+          </div>
+          <div class="flow-step-card">
+            <span class="flow-step-num">2</span>
+            <div class="flow-step-icon">🩸</div>
+            <div class="flow-step-title">Blood Group & Units Entered</div>
+          </div>
+          <div class="flow-step-card">
+            <span class="flow-step-num">3</span>
+            <div class="flow-step-icon">🔍</div>
+            <div class="flow-step-title">System Checks Available Sources</div>
+          </div>
+          <div class="flow-step-card">
+            <span class="flow-step-num">4</span>
+            <div class="flow-step-icon">🛡️</div>
+            <div class="flow-step-title">Compatibility Verification</div>
+          </div>
+          <div class="flow-step-card">
+            <span class="flow-step-num">5</span>
+            <div class="flow-step-icon">⏱️</div>
+            <div class="flow-step-title">Distance + Urgency Analysis</div>
+          </div>
+          <div class="flow-step-card">
+            <span class="flow-step-num">6</span>
+            <div class="flow-step-icon">📍</div>
+            <div class="flow-step-title">Nearby Sources Prioritized</div>
+          </div>
+          <div class="flow-step-card">
+            <span class="flow-step-num">7</span>
+            <div class="flow-step-icon">🔔</div>
+            <div class="flow-step-title">Emergency Notification</div>
+          </div>
+          <div class="flow-step-card">
+            <span class="flow-step-num">8</span>
+            <div class="flow-step-icon">✅</div>
+            <div class="flow-step-title">Source Confirmation</div>
+          </div>
+        </div>
+
+        <!-- Problems vs Proposed Solution Matrix -->
+        <div class="card mb-5">
+          <div class="card-header bg-white">
+            <h3 class="h5 mb-0">Emergency Blood System — Problems & Proposed Solutions</h3>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table mb-0">
+                <thead>
+                  <tr>
+                    <th style="width: 28%;">Identified Challenge</th>
+                    <th style="width: 32%;">Traditional Approach</th>
+                    <th style="width: 40%;">LifeLink Smart Solution</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>1. Difficulty in Finding Compatible Blood</strong></td>
+                    <td>Panic phone calls to unorganized contacts and disconnected centers.</td>
+                    <td><strong class="text-success">Automated Component-Aware Matching:</strong> Clinically evaluates RBC, Platelet, and Plasma rules instantly to find safe matches.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>2. Scattered Availability Information</strong></td>
+                    <td>Blood stock trapped in isolated hospital logs with zero centralized visibility.</td>
+                    <td><strong class="text-success">Centralized Directory & Live Tracking:</strong> Participating facilities share standardized, searchable real-time inventory.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>3. Emergency Time Delay</strong></td>
+                    <td>45–90 vital minutes wasted calling sources one-by-one during the "Golden Hour".</td>
+                    <td><strong class="text-success">Priority-Based Dispatch:</strong> Critical cases jump to top priority, ranking multi-factor sources within seconds.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>4. Distance & Shortage Logistical Bottlenecks</strong></td>
+                    <td>Couriers sent blindly to distant facilities without knowing if required units exist.</td>
+                    <td><strong class="text-success">Haversine Distance & Multi-Source Pooling:</strong> Recommends nearest facilities and automatically calculates split allocations for shortages.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 2: REQUEST BLOOD FORM                                          -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-request-blood">
+        <div class="row justify-content-center">
+          <div class="col-lg-8">
+            <div class="card shadow-sm border-0">
+              <div class="card-header bg-white border-bottom">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <h2 class="h4 mb-0 text-dark">Emergency Blood Requisition Form</h2>
+                    <span class="small text-muted">Generate prioritized matches across regional blood banks</span>
+                  </div>
+                  <span class="badge badge-critical">Priority Requisition</span>
+                </div>
+              </div>
+
+              <div class="card-body">
+                <form id="emergencyRequestForm">
+                  <!-- Hospital Selection -->
+                  <div class="form-group">
+                    <label class="form-label" for="reqHospitalSelect">Requesting Hospital / Facility *</label>
+                    <select id="reqHospitalSelect" class="form-select" required>
+                      <!-- Populated from backend -->
+                    </select>
+                    <div class="form-text">System automatically utilizes the registered hospital coordinates for distance ranking.</div>
+                  </div>
+
+                  <div class="row">
+                    <!-- Blood Group -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqBloodGroup">Required Blood Group *</label>
+                      <select id="reqBloodGroup" class="form-select" required>
+                        <option value="">-- Select Blood Group --</option>
+                        <option value="A+">A Positive (A+)</option>
+                        <option value="A-">A Negative (A-)</option>
+                        <option value="B+">B Positive (B+)</option>
+                        <option value="B-">B Negative (B-)</option>
+                        <option value="AB+">AB Positive (AB+)</option>
+                        <option value="AB-">AB Negative (AB-)</option>
+                        <option value="O+">O Positive (O+)</option>
+                        <option value="O-">O Negative (O-)</option>
+                      </select>
+                    </div>
+
+                    <!-- Component -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqComponent">Blood Component *</label>
+                      <select id="reqComponent" class="form-select" required>
+                        <option value="prbc">Packed Red Blood Cells (PRBC)</option>
+                        <option value="whole_blood">Whole Blood</option>
+                        <option value="platelets">Platelets (RDP / SDP)</option>
+                        <option value="ffp">Fresh Frozen Plasma (FFP)</option>
+                        <option value="cryo">Cryoprecipitate</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="row">
+                    <!-- Units Required -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqUnits">Units Required *</label>
+                      <input type="number" id="reqUnits" class="form-control" min="1" max="20" value="2" required>
+                      <div class="form-text">1 unit ≈ 350-450 mL. If demand exceeds 1 source, multi-pooling activates.</div>
+                    </div>
+
+                    <!-- Urgency Level -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqUrgency">Urgency Tier *</label>
+                      <select id="reqUrgency" class="form-select" required>
+                        <option value="CRITICAL">Critical (Immediate Life-Threatening / Trauma)</option>
+                        <option value="URGENT" selected>Urgent (Needed within 2-4 Hours / Surgical)</option>
+                        <option value="STANDARD">Standard (Planned Elective Procedure)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div class="row">
+                    <!-- Patient ID -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqPatientId">Patient Identifier / MRN</label>
+                      <input type="text" id="reqPatientId" class="form-control" placeholder="e.g. MRN-2026-9901" value="MRN-EMERGENCY">
+                    </div>
+
+                    <!-- Clinical Reason -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqReason">Clinical Indication</label>
+                      <input type="text" id="reqReason" class="form-control" placeholder="e.g. Acute hemorrhagic shock, severe trauma">
+                    </div>
+                  </div>
+
+                  <div class="row">
+                    <!-- Doctor Contact Name -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqContactPerson">Authorized Contact Person *</label>
+                      <input type="text" id="reqContactPerson" class="form-control" placeholder="e.g. Dr. K. S. Sharma" value="Duty Medical Officer" required>
+                    </div>
+
+                    <!-- Emergency Phone -->
+                    <div class="col-md-6 form-group">
+                      <label class="form-label" for="reqContactPhone">Emergency Phone Number *</label>
+                      <input type="tel" id="reqContactPhone" class="form-control" placeholder="+91 98480 00000" value="+91 86742 55900" required>
+                    </div>
+                  </div>
+
+                  <!-- Quick Scenario Buttons -->
+                  <div class="p-3 bg-light rounded mb-3">
+                    <div class="small font-weight-bold text-muted mb-2">⚡ Quick Load Preset Test Cases:</div>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="AppUI.loadScenarioToForm('scenario-1')">
+                        Case 1: Standard Nearby (O+ PRBC)
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="AppUI.loadScenarioToForm('scenario-2')">
+                        Case 2: Shortage Split (5 Units O-)
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="AppUI.loadScenarioToForm('scenario-3')">
+                        Case 3: Universal Match (AB+ Recipient)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="d-grid mt-4">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                      ⚡ Execute Smart Match & Dispatch Requirement
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 3: SMART MATCHING RESULTS                                      -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-matching">
+        <div id="matchingResultsContainer">
+          <div class="card p-5 text-center text-muted">
+            <div class="display-4 mb-3">🔍</div>
+            <h4>No Active Emergency Matching Query</h4>
+            <p>Please submit an emergency blood requirement through the form or select a test scenario to trigger the matching algorithm.</p>
+            <div class="mt-3">
+              <button class="btn btn-primary" data-tab-target="request-blood">Go to Blood Request Form</button>
+              <button class="btn btn-outline-secondary" data-tab-target="scenarios">View Test Scenarios</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Geographic Transit Map -->
+        <div class="card mt-4 bg-white" id="matchingMapCard" style="display: none;">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+              <h4 class="h6 mb-0">🗺️ Emergency Transit & Geographic Proximity Map</h4>
+              <span class="small text-muted">Interactive Leaflet visualization of requesting facility, blood banks & transit coverage</span>
+            </div>
+            <span class="badge bg-light text-dark border">Live Proximity Radar</span>
+          </div>
+          <div class="card-body p-0">
+            <div id="matchingLeafletMap" style="height: 380px; width: 100%;"></div>
+          </div>
+          <div class="card-footer bg-light d-flex justify-content-between align-items-center small text-muted flex-wrap gap-2">
+            <div>
+              <span class="me-3">🔵 <strong>Hospital Pin:</strong> Requesting Center</span>
+              <span class="me-3">🔴 <strong>Red Pins:</strong> Blood Banks</span>
+              <span class="me-3">🟢 <strong>Green Circle:</strong> 5 km (Immediate Dispatch)</span>
+              <span>🟡 <strong>Amber Circle:</strong> 25 km (Regional Transit)</span>
+            </div>
+            <div>*Real-time Haversine distance calculations synchronized with database.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 4: BLOOD SOURCE DIRECTORY                                      -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-directory">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+          <div>
+            <h2 class="h3 mb-1">Blood Source Directory</h2>
+            <p class="text-muted small mb-0">Search registered blood banks, regional donor centers, and storage units.</p>
+          </div>
+          <span class="badge badge-verified" id="directoryCountBadge">Verified Healthcare Facilities</span>
+        </div>
+
+        <!-- Filter Controls -->
+        <div class="card mb-4 bg-white">
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label small" for="dirSearchInput">Search Facility or City</label>
+                <input type="text" id="dirSearchInput" class="form-control form-control-sm" placeholder="e.g. Gudlavalleru, Vijayawada, Red Cross...">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small" for="dirGroupFilter">Filter by Blood Group</label>
+                <select id="dirGroupFilter" class="form-select form-select-sm">
+                  <option value="ALL">All Blood Groups</option>
+                  <option value="A+">A+</option>
+                  <option value="A-">A-</option>
+                  <option value="B+">B+</option>
+                  <option value="B-">B-</option>
+                  <option value="AB+">AB+</option>
+                  <option value="AB-">AB-</option>
+                  <option value="O+">O+</option>
+                  <option value="O-">O-</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small" for="dirTypeFilter">Facility Type</label>
+                <select id="dirTypeFilter" class="form-select form-select-sm">
+                  <option value="ALL">All Categories</option>
+                  <option value="blood_bank">Blood Banks & Trust Centers</option>
+                  <option value="hospital_center">Hospital Blood Stores</option>
+                </select>
+              </div>
+              <div class="col-md-2 d-flex align-items-end">
+                <div class="form-check mb-1">
+                  <input class="form-check-input" type="checkbox" id="dirVerifiedOnly">
+                  <label class="form-check-label small" for="dirVerifiedOnly">
+                    Verified Only
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Directory Cards Container -->
+        <div class="row g-3" id="directoryCardsContainer">
+          <!-- Dynamically populated by AppUI.renderDirectory() -->
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 5: VOLUNTARY DONORS DIRECTORY & REGISTRATION (NEW)            -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-donors">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+          <div>
+            <h2 class="h3 mb-1">Voluntary Blood Donors Network</h2>
+            <p class="text-muted small mb-0">Search registered donors ready to respond during emergency blood shortages or register to save lives.</p>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="AppUI.openDonorModal()">
+            + Register as a Blood Donor
+          </button>
+        </div>
+
+        <!-- Donor Filters -->
+        <div class="card mb-4 bg-white">
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-md-5">
+                <label class="form-label small" for="donorSearchInput">Search Donor Name or City</label>
+                <input type="text" id="donorSearchInput" class="form-control form-control-sm" placeholder="e.g. Rajesh, Gudlavalleru, Vijayawada...">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small" for="donorGroupFilter">Filter by Blood Group</label>
+                <select id="donorGroupFilter" class="form-select form-select-sm">
+                  <option value="ALL">All Blood Groups</option>
+                  <option value="O-">O Negative (Universal Donor)</option>
+                  <option value="O+">O Positive</option>
+                  <option value="A+">A Positive</option>
+                  <option value="A-">A Negative</option>
+                  <option value="B+">B Positive</option>
+                  <option value="B-">B Negative</option>
+                  <option value="AB+">AB Positive</option>
+                  <option value="AB-">AB Negative</option>
+                </select>
+              </div>
+              <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-outline-primary btn-sm w-100" onclick="AppUI.renderDonors()">
+                  🔍 Apply Donor Filter
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Donors List -->
+        <div class="row g-3" id="donorsCardsContainer">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 6: HOSPITAL DASHBOARD                                          -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-hospital-dashboard">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+          <div>
+            <h2 class="h3 mb-1">Hospital Emergency Dashboard</h2>
+            <p class="text-muted small mb-0">Track requisition lifecycle: <code>Pending → Matched → Confirmed → Fulfilled</code></p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0">Active Facility:</label>
+            <select id="hospitalSelectDropdown" class="form-select form-select-sm" style="width: auto;"></select>
+            <button class="btn btn-danger btn-sm" data-tab-target="request-blood">
+              + New Emergency Request
+            </button>
+          </div>
+        </div>
+
+        <!-- Requests History Table -->
+        <div class="card bg-white">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h4 class="h6 mb-0">Active & Historical Hospital Requisitions</h4>
+            <span class="small text-muted">Synchronized with Database</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table mb-0">
+                <thead>
+                  <tr>
+                    <th>Req ID</th>
+                    <th>Hospital Facility</th>
+                    <th>Patient / Indication</th>
+                    <th>Required Units</th>
+                    <th>Urgency</th>
+                    <th>Workflow Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="hospitalRequestsTableBody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 7: BLOOD SOURCE PORTAL                                         -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-source-dashboard">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+          <div>
+            <h2 class="h3 mb-1">Blood Bank Portal & Inventory Manager</h2>
+            <p class="text-muted small mb-0">Review inbound emergency alerts and manage verified inventory stock levels in the database.</p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <label class="small text-muted mb-0">Active Source:</label>
+            <select id="sourceSelectDropdown" class="form-select form-select-sm" style="width: auto;"></select>
+          </div>
+        </div>
+
+        <div class="card mb-4 bg-white border-left-source">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+              <div>
+                <h4 class="h5 mb-1" id="sourcePortalName">Central Life Community Blood Bank</h4>
+                <p class="small text-muted mb-0" id="sourcePortalType">Community Blood Center • Main Road, Gudlavalleru</p>
+              </div>
+              <div class="text-end">
+                <span class="badge badge-verified mb-1">✓ Authorized Facility</span>
+                <div class="smaller text-muted" id="sourcePortalLastUpdate">Last stock update: Just now</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Incoming Emergency Requests Queue -->
+        <div class="card mb-4 bg-white">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <h4 class="h6 mb-0">🚨 Inbound Emergency Requests Requiring Confirmation</h4>
+            <span class="badge bg-warning text-dark small">Action Required</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table mb-0">
+                <thead>
+                  <tr>
+                    <th>Req ID</th>
+                    <th>Hospital</th>
+                    <th>Required Stock</th>
+                    <th>Priority</th>
+                    <th>Doctor Contact</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="sourceIncomingTableBody">
+                  <!-- Populated dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inventory Stock Manager -->
+        <div class="card bg-white">
+          <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+              <h4 class="h6 mb-0">Blood Stock Inventory Management</h4>
+              <span class="smaller text-muted">Update available units in real-time — persisted directly to the database</span>
+            </div>
+            <button class="btn btn-primary btn-sm" id="saveStockChangesBtn">
+              💾 Save Stock Changes
+            </button>
+          </div>
+          <div class="card-body">
+            <div id="stockEditorGrid">
+              <!-- Dynamically populated stock table inputs -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 8: TEST CASES & SCENARIOS SANDBOX                              -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-scenarios">
+        <div class="mb-4">
+          <h2 class="h3 mb-1">Interactive System Test Scenarios</h2>
+          <p class="text-muted">
+            Test realistic edge cases to verify matching algorithm accuracy, component compatibility, 
+            distance calculation, and shortage pooling.
+          </p>
+        </div>
+
+        <div class="row g-3">
+          <!-- Scenario 1 -->
+          <div class="col-md-6 col-lg-4">
+            <div class="scenario-card" data-scenario="scenario-1">
+              <div>
+                <div class="scenario-card-header">
+                  <span class="badge bg-success text-white scenario-badge">TEST CASE 1</span>
+                  <span class="small font-weight-bold">Optimal Match</span>
+                </div>
+                <h5 class="h6 mb-2">Nearby Source Has Sufficient Stock</h5>
+                <p class="small text-muted mb-3">
+                  <strong>Input:</strong> Hospital at Gudlavalleru requires 2 units O+ PRBC.<br>
+                  <strong>Expected Result:</strong> Central Life Community Blood Bank (0.5 km) is ranked #1 with high compatibility and score > 90.
+                </p>
+              </div>
+              <button class="btn btn-outline-primary btn-sm w-100">Run Scenario 1 →</button>
+            </div>
+          </div>
+
+          <!-- Scenario 2 -->
+          <div class="col-md-6 col-lg-4">
+            <div class="scenario-card" data-scenario="scenario-2">
+              <div>
+                <div class="scenario-card-header">
+                  <span class="badge bg-danger text-white scenario-badge">TEST CASE 2</span>
+                  <span class="small font-weight-bold">Shortage Pooling</span>
+                </div>
+                <h5 class="h6 mb-2">Multi-Source Split Allocation</h5>
+                <p class="small text-muted mb-3">
+                  <strong>Input:</strong> Hospital requires 5 units O- PRBC (rare universal donor).<br>
+                  <strong>Expected Result:</strong> No single facility has 5 units. System triggers Multi-Source Pooling across nearest centers.
+                </p>
+              </div>
+              <button class="btn btn-outline-primary btn-sm w-100">Run Scenario 2 →</button>
+            </div>
+          </div>
+
+          <!-- Scenario 3 -->
+          <div class="col-md-6 col-lg-4">
+            <div class="scenario-card" data-scenario="scenario-3">
+              <div>
+                <div class="scenario-card-header">
+                  <span class="badge bg-info text-white scenario-badge">TEST CASE 3</span>
+                  <span class="small font-weight-bold">Universal Recipient</span>
+                </div>
+                <h5 class="h6 mb-2">AB+ Flexible Transfusion Matching</h5>
+                <p class="small text-muted mb-3">
+                  <strong>Input:</strong> Patient AB+ requires 4 units PRBC.<br>
+                  <strong>Expected Result:</strong> System leverages universal recipient rules, safely identifying AB+, A+, B+, and O+ sources.
+                </p>
+              </div>
+              <button class="btn btn-outline-primary btn-sm w-100">Run Scenario 3 →</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================== -->
+      <!-- TAB 9: ABOUT & SYSTEM ARCHITECTURE (Clean - No College Details)    -->
+      <!-- ================================================================== -->
+      <section class="tab-view" id="tab-about">
+        <div class="card shadow-sm mb-4">
+          <div class="card-body p-4 p-md-5">
+            <div class="text-center border-bottom pb-4 mb-4">
+              <span class="badge bg-danger text-white mb-2 font-weight-bold">EMERGENCY HEALTHCARE DECISION SUPPORT</span>
+              <h1 class="h2 font-weight-bold text-dark">LifeLink — Smart Emergency Blood Availability & Matching System</h1>
+              <p class="text-muted max-w-700 mx-auto">
+                A centralized digital platform connecting emergency hospitals, accredited blood banks, and verified voluntary donors to eliminate life-threatening delays in blood availability.
+              </p>
+            </div>
+
+            <!-- Abstract -->
+            <div class="mb-4">
+              <h3 class="h5 text-danger border-bottom pb-2">Abstract & Platform Overview</h3>
+              <p class="text-muted leading-relaxed">
+                This project aims to develop a smart and centralized platform that helps patients and hospitals quickly find suitable blood sources during emergency situations. The system considers important factors such as blood group, required blood units, hospital location, urgency level, and blood availability to identify nearby compatible sources. It uses location-based and priority-based matching to connect emergency blood requirements with suitable blood banks, hospitals, or registered sources. The platform also helps reduce the time and effort involved in manual blood searching and communication. Overall, the proposed system aims to provide a faster, organized, and reliable approach to emergency blood matching, thereby supporting better emergency response and community healthcare services.
+              </p>
+            </div>
+
+            <!-- Problem Statement -->
+            <div class="mb-4">
+              <h3 class="h5 text-danger border-bottom pb-2">Problem Statement</h3>
+              <p class="text-muted mb-2"><strong>Context:</strong> During medical emergencies, finding the required blood group within a short time can be difficult. Hospitals and patients often depend on manual searches, phone calls, and personal contacts.</p>
+              <div class="row g-3 mt-1">
+                <div class="col-md-4">
+                  <div class="p-3 border rounded bg-white h-100">
+                    <strong class="text-dark d-block mb-1">1. Difficulty in Finding Blood</strong>
+                    <span class="small text-muted">Finding rare or matched blood groups quickly during trauma emergencies is severely challenging.</span>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="p-3 border rounded bg-white h-100">
+                    <strong class="text-dark d-block mb-1">2. Scattered Information</strong>
+                    <span class="small text-muted">Availability data is fragmented across isolated blood banks without unified digital visibility.</span>
+                  </div>
+                </div>
+                <div class="col-md-4">
+                  <div class="p-3 border rounded bg-white h-100">
+                    <strong class="text-dark d-block mb-1">3. Time Delay (Golden Hour)</strong>
+                    <span class="small text-muted">Manual phone calling wastes precious minutes while patients require immediate transfusion.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Objectives & Scope -->
+            <div class="row g-4 mb-4">
+              <div class="col-md-6">
+                <h3 class="h5 text-danger border-bottom pb-2">Platform Objectives</h3>
+                <ul class="small text-muted">
+                  <li class="mb-2"><strong>Quick Blood Matching:</strong> Automatically identify clinically compatible sources based on component rules.</li>
+                  <li class="mb-2"><strong>Location-Based Search:</strong> Compute Haversine distances to recommend nearest centers.</li>
+                  <li class="mb-2"><strong>Urgency-Based Prioritization:</strong> Dynamically weigh distance and stock during Critical Code Red scenarios.</li>
+                  <li class="mb-2"><strong>Multi-Source Shortage Pooling:</strong> Split large blood requisitions across multiple facilities when one center has insufficient units.</li>
+                  <li class="mb-2"><strong>Reduce Search Time:</strong> Slash emergency search delays from hours to seconds.</li>
+                </ul>
+              </div>
+              <div class="col-md-6">
+                <h3 class="h5 text-danger border-bottom pb-2">Scope of Features</h3>
+                <ul class="small text-muted">
+                  <li class="mb-2"><strong>Blood Requirement Registration:</strong> Collect blood group, component, units, location, urgency.</li>
+                  <li class="mb-2"><strong>Directory & Availability:</strong> Real-time inventory tracking across blood banks & hospital storage units.</li>
+                  <li class="mb-2"><strong>Decision-Support Algorithm:</strong> Multi-factor scoring (Distance 35%, Stock 35%, Affinity 15%, Verification 15%).</li>
+                  <li class="mb-2"><strong>Workflow Lifecycle:</strong> Submitted → Matched → Confirmed → Fulfilled.</li>
+                  <li class="mb-2"><strong>Voluntary Donors Network:</strong> Direct citizen registration and proximity emergency notifications.</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- System Architecture & Tech Stack -->
+            <div class="mb-4">
+              <h3 class="h5 text-danger border-bottom pb-2">System Architecture & Technology Stack</h3>
+              <div class="table-responsive">
+                <table class="table table-bordered table-sm small">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Layer</th>
+                      <th>Technology Used</th>
+                      <th>Role & Responsibilities</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Frontend UI</strong></td>
+                      <td>HTML5, CSS3 Modern Theme, Vanilla JS, Leaflet.js</td>
+                      <td>Responsive emergency requisition interface, dynamic stock editing, live maps, and notification drawer.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Backend Application</strong></td>
+                      <td>Python 3 (Flask RESTful API)</td>
+                      <td>Routing, data validation, smart matching algorithm execution, CORS support, and authentication.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Database Layer</strong></td>
+                      <td>MySQL Database (with PyMySQL & SQLAlchemy)</td>
+                      <td>Relational storage for facilities, inventory levels, blood requests, donor registries, and audit logs.</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Matching Algorithm</strong></td>
+                      <td>Haversine Distance & Knapsack Pooling Engine</td>
+                      <td>Calculates great-circle distances, evaluates clinical compatibility, and formulates multi-source pooling plans.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Expected Outcomes -->
+            <div class="p-4 bg-light rounded">
+              <h5 class="text-dark font-weight-bold mb-3">Expected Healthcare Outcomes</h5>
+              <div class="row g-3 small text-muted">
+                <div class="col-md-6">• <strong>Faster Blood Identification:</strong> Reduce search time during critical emergencies.</div>
+                <div class="col-md-6">• <strong>Improved Emergency Response:</strong> Help hospitals respond rapidly to trauma calls.</div>
+                <div class="col-md-6">• <strong>Better Accessibility:</strong> Centralize scattered blood availability information.</div>
+                <div class="col-md-6">• <strong>Community Support:</strong> Connect hospitals, blood banks, and voluntary donors seamlessly.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Donor Registration Modal -->
+  <div class="modal-overlay" id="donorModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h4 class="h5 mb-0">🩸 Register as Voluntary Blood Donor</h4>
+        <button class="modal-close-btn" onclick="AppUI.closeDonorModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <form id="donorRegistrationForm">
+          <div class="row">
+            <div class="col-md-6 form-group">
+              <label class="form-label" for="donorName">Full Name *</label>
+              <input type="text" id="donorName" class="form-control" required placeholder="e.g. Ramesh Varma">
+            </div>
+            <div class="col-md-6 form-group">
+              <label class="form-label" for="donorBloodGroup">Blood Group *</label>
+              <select id="donorBloodGroup" class="form-select" required>
+                <option value="">-- Select Blood Group --</option>
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+                <option value="O+">O+</option>
+                <option value="O-">O-</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 form-group">
+              <label class="form-label" for="donorPhone">Mobile Phone *</label>
+              <input type="tel" id="donorPhone" class="form-control" required placeholder="+91 98480 00000">
+            </div>
+            <div class="col-md-6 form-group">
+              <label class="form-label" for="donorEmail">Email Address *</label>
+              <input type="email" id="donorEmail" class="form-control" required placeholder="donor@example.com">
+            </div>
+          </div>
+          <div class="row">
+            <div class="col-md-6 form-group">
+              <label class="form-label" for="donorCity">City / District *</label>
+              <input type="text" id="donorCity" class="form-control" required placeholder="e.g. Gudlavalleru, Vijayawada">
+            </div>
+            <div class="col-md-6 form-group">
+              <label class="form-label" for="donorLastDonated">Last Donated Date</label>
+              <input type="date" id="donorLastDonated" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="donorAddress">Street Address / Locality</label>
+            <input type="text" id="donorAddress" class="form-control" placeholder="Ward No / Street Address">
+          </div>
+          <div class="d-flex justify-content-end gap-2 mt-4">
+            <button type="button" class="btn btn-outline-secondary" onclick="AppUI.closeDonorModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Register Donor in Database ✓</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth Modal (Login / Register) -->
+  <div class="modal-overlay" id="authModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h4 class="h5 mb-0" id="authModalTitle">Sign In to LifeLink</h4>
+        <button class="modal-close-btn" onclick="AppUI.closeAuthModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex border-bottom mb-3">
+          <button class="btn btn-link text-decoration-none px-3 py-2 active font-weight-bold" id="authTabLoginBtn" onclick="AppUI.switchAuthTab('login')">
+            Sign In
+          </button>
+          <button class="btn btn-link text-decoration-none px-3 py-2 text-muted" id="authTabRegisterBtn" onclick="AppUI.switchAuthTab('register')">
+            Register Facility
+          </button>
+        </div>
+
+        <!-- Login Form -->
+        <div id="authLoginFormContainer">
+          <form id="authLoginForm">
+            <div class="form-group">
+              <label class="form-label" for="authRole">Login As</label>
+              <select id="authRole" class="form-select">
+                <option value="hospital">Hospital Authority / ICU Lead</option>
+                <option value="source">Blood Bank Officer / Storage Lead</option>
+                <option value="evaluator">Emergency Network Coordinator</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="loginFacilitySelect">Select Registered Facility</label>
+              <select id="loginFacilitySelect" class="form-select">
+                <!-- Dynamically populated -->
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="loginPassword">Access Password</label>
+              <input type="password" id="loginPassword" class="form-control" value="password123" required>
+              <span class="smaller text-muted">Default demo access password is <code>password123</code></span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="AppUI.switchAuthTab('register')">
+                New facility? Register
+              </button>
+              <button type="submit" class="btn btn-primary">
+                Sign In to Portal ✓
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Register Form -->
+        <div id="authRegisterFormContainer" style="display: none;">
+          <form id="authRegisterForm">
+            <div class="form-group">
+              <label class="form-label" for="regFacilityType">Facility Type</label>
+              <select id="regFacilityType" class="form-select">
+                <option value="hospital">Emergency Hospital / Trauma Center</option>
+                <option value="blood_bank">Blood Bank / Blood Center</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regFacilityName">Official Facility Name *</label>
+              <input type="text" id="regFacilityName" class="form-control" required placeholder="e.g. Life Care Emergency Hospital">
+            </div>
+            <div class="row">
+              <div class="col-md-6 form-group">
+                <label class="form-label" for="regContactPhone">Emergency Phone *</label>
+                <input type="tel" id="regContactPhone" class="form-control" required placeholder="+91 86742 00000">
+              </div>
+              <div class="col-md-6 form-group">
+                <label class="form-label" for="regCity">City / District *</label>
+                <input type="text" id="regCity" class="form-control" required placeholder="e.g. Gudlavalleru, Vijayawada">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="regAddress">Full Street Address *</label>
+              <input type="text" id="regAddress" class="form-control" required placeholder="Main Road, Sector...">
+            </div>
+            <div class="row">
+              <div class="col-md-6 form-group">
+                <label class="form-label" for="regRepName">Authorized Representative *</label>
+                <input type="text" id="regRepName" class="form-control" required placeholder="Dr. / Transfusion Lead Name">
+              </div>
+              <div class="col-md-6 form-group">
+                <label class="form-label" for="regRepEmail">Official Facility Email *</label>
+                <input type="email" id="regRepEmail" class="form-control" required placeholder="contact@facility.org">
+              </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+              <button type="button" class="btn btn-outline-secondary btn-sm" onclick="AppUI.switchAuthTab('login')">
+                Already registered? Sign In
+              </button>
+              <button type="submit" class="btn btn-primary">
+                Register & Sign In ✓
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generic Reusable Modal (For Requisitions & Inventory Inspections) -->
+  <div class="modal-overlay" id="genericModal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h4 class="h5 mb-0" id="genericModalTitle">Modal Title</h4>
+        <button class="modal-close-btn" onclick="AppUI.closeGenericModal()">×</button>
+      </div>
+      <div class="modal-body" id="genericModalBody">
+        <!-- Injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer (Clean - No College Details) -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-top">
+        <div class="footer-col">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <svg width="28" height="28" viewBox="0 0 100 100" fill="none">
+              <path d="M50 8 C50 8 18 45 18 68 C18 85 32 95 50 95 C68 95 82 85 82 68 C82 45 50 8 50 8 Z" fill="#dc2626"/>
+              <path d="M35 62 L43 62 L47 50 L53 74 L57 62 L65 62" stroke="white" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+            <strong class="text-white h5 mb-0">LifeLink</strong>
+          </div>
+          <p class="small text-muted">
+            Smart Emergency Blood Availability & Matching System. A centralized digital healthcare network connecting hospitals, certified blood banks, and verified blood donors for rapid emergency transfusions.
+          </p>
+        </div>
+
+        <div class="footer-col">
+          <h5>Quick Links</h5>
+          <ul class="footer-links">
+            <li><a data-tab-target="home">Home</a></li>
+            <li><a data-tab-target="request-blood">Request Blood</a></li>
+            <li><a data-tab-target="directory">Blood Banks</a></li>
+            <li><a data-tab-target="donors">Donors</a></li>
+            <li><a data-tab-target="matching">Smart Matcher</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Portals & Tools</h5>
+          <ul class="footer-links">
+            <li><a data-tab-target="hospital-dashboard">Hospital Portal</a></li>
+            <li><a data-tab-target="source-dashboard">Blood Bank Portal</a></li>
+            <li><a data-tab-target="scenarios">Test Scenarios</a></li>
+            <li><a data-tab-target="about">System Flow & About</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Backend & Database</h5>
+          <p class="small text-muted mb-1"><strong>Backend:</strong> Python 3 / Flask REST API</p>
+          <p class="small text-muted mb-1"><strong>Database:</strong> MySQL Database (with PyMySQL & SQLAlchemy)</p>
+          <p class="small text-muted mb-0"><strong>Algorithm:</strong> Haversine Distance & Multi-Source Pooling</p>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>© 2026 LifeLink Platform. Centralized Emergency Blood Availability & Matching System.</div>
+        <div>Clinical decision support platform — always confirm via certified laboratory crossmatch.</div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <!-- Scripts -->
+  <script src="{{ url_for('static', filename='js/data.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/algorithm.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
