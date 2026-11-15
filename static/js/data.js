@@ -455,7 +455,7 @@ const DEFAULT_NOTIFICATIONS = [
   {
     id: 'NOTIF-2',
     title: 'New Donor Registered',
-    message: 'Rajesh Kumar Verma (O-) registered as active voluntary donor in Gudlavalleru.',
+    message: 'Rajesh Kumar Verma (O-) registered as active voluntary donor in Metro Central.',
     type: 'success',
     read: false,
     timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString()

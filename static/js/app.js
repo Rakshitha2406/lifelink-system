@@ -141,6 +141,10 @@ const AppUI = {
     this.startNotificationPoller();
     this.renderAll();
 
+    setTimeout(() => {
+      this.showToast('LifeLink Emergency Network: Verified Blood Matching Online', 'info');
+    }, 1000);
+
     const hash = window.location.hash.replace('#', '');
     if (hash && document.getElementById(`tab-${hash}`)) {
       this.switchTab(hash);
@@ -1304,17 +1308,19 @@ const AppUI = {
     if (!list) return;
 
     const unreadCount = AppState.notifications.filter(n => !n.read).length;
-    if (badge) badge.innerText = unreadCount;
+    if (badge) {
+      badge.innerText = unreadCount > 0 ? unreadCount : (AppState.notifications.length > 0 ? AppState.notifications.length : '0');
+    }
 
     if (AppState.notifications.length === 0) {
       list.innerHTML = `<div class="p-3 text-center text-muted small">No emergency alerts recorded.</div>`;
       return;
     }
 
-    list.innerHTML = AppState.notifications.map(n => `
-      <div class="notification-item ${n.read ? '' : 'unread'}">
+    list.innerHTML = AppState.notifications.slice(0, 15).map(n => `
+      <div class="notification-item ${n.read ? '' : 'unread'}" style="padding: 12px 14px; border-bottom: 1px solid #f1f5f9;">
         <div class="d-flex justify-content-between align-items-center mb-1">
-          <strong class="small text-dark">${n.title}</strong>
+          <strong class="small text-dark">${n.type === 'critical' ? '🚨 ' : n.type === 'success' ? '✓ ' : 'ℹ️ '}${n.title}</strong>
           <span class="smaller text-muted">${n.timestamp ? new Date(n.timestamp).toLocaleTimeString() : ''}</span>
         </div>
         <p class="smaller text-muted mb-0">${n.message}</p>
@@ -1325,8 +1331,13 @@ const AppUI = {
   toggleNotificationDrawer() {
     const drawer = document.getElementById('notificationDrawer');
     if (drawer) {
-      drawer.classList.toggle('active');
-      if (drawer.classList.contains('active')) {
+      const isCurrentlyOpen = drawer.classList.contains('active') || drawer.style.display === 'block';
+      if (isCurrentlyOpen) {
+        drawer.classList.remove('active', 'show');
+        drawer.style.display = 'none';
+      } else {
+        drawer.classList.add('active', 'show');
+        drawer.style.display = 'block';
         AppState.notifications.forEach(n => n.read = true);
         const badge = document.getElementById('notifCountBadge');
         if (badge) badge.innerText = '0';
@@ -1756,17 +1767,20 @@ const AppUI = {
     if (!container) return;
 
     const toast = document.createElement('div');
-    toast.className = `toast toast-${type === 'error' ? 'critical' : type}`;
+    toast.className = `custom-toast toast toast-${type === 'error' ? 'critical' : type}`;
+    const icon = (type === 'critical' || type === 'error') ? '🚨' : type === 'success' ? '✓' : 'ℹ️';
     toast.innerHTML = `
-      <div class="d-flex align-items-center gap-2">
-        <span>${type === 'critical' || type === 'error' ? '🚨' : type === 'success' ? '✓' : 'ℹ️'}</span>
-        <span>${message}</span>
+      <div class="toast-content" style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 1.15rem;">${icon}</span>
+        <span style="font-weight: 500; font-size: 0.88rem; color: #0f172a;">${message}</span>
       </div>
+      <button class="toast-close" onclick="this.parentElement.remove()" style="margin-left: 12px; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #94a3b8;">×</button>
     `;
     container.appendChild(toast);
 
     setTimeout(() => {
       toast.style.opacity = '0';
+      toast.style.transform = 'translateX(50px)';
       setTimeout(() => toast.remove(), 300);
     }, 4500);
   }
@@ -1777,6 +1791,14 @@ document.addEventListener('click', (e) => {
   if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {
     e.target.classList.remove('active');
     e.target.style.display = 'none';
+  }
+
+  // Dismiss notification drawer when clicking outside
+  const drawer = document.getElementById('notificationDrawer');
+  const bell = document.getElementById('notifBellBtn');
+  if (drawer && bell && !drawer.contains(e.target) && !bell.contains(e.target)) {
+    drawer.classList.remove('active', 'show');
+    drawer.style.display = 'none';
   }
 });
 
