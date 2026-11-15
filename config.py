@@ -34,7 +34,18 @@ class Config:
 
     # SQLite fallback connection string
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-    SQLITE_URI = f"sqlite:///{os.path.join(BASE_DIR, 'lifelink.db')}"
+    if os.getenv('VERCEL') or os.getenv('AWS_LAMBDA_FUNCTION_NAME'):
+        tmp_db = '/tmp/lifelink.db'
+        src_db = os.path.join(BASE_DIR, 'lifelink.db')
+        if not os.path.exists(tmp_db) and os.path.exists(src_db):
+            import shutil
+            try:
+                shutil.copy2(src_db, tmp_db)
+            except Exception:
+                pass
+        SQLITE_URI = f"sqlite:///{tmp_db}"
+    else:
+        SQLITE_URI = f"sqlite:///{os.path.join(BASE_DIR, 'lifelink.db')}"
 
     # Target engine mode: 'auto' (tries MySQL/cloud DB first, falls back to SQLite)
     DB_MODE = os.getenv('DB_MODE', 'auto')
